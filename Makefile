@@ -2,7 +2,7 @@ EXE_NAME=bam_subsample
 
 CPP=g++
 
-CPPFLAGS=-O3 -std=c++11 -I$(HOME)/boost/include -I$(HOME)/sources/htslib 
+CPPFLAGS=-O3 -std=c++11 -I$(HOME)/boost/include -I$(HOME)/sources/htslib
 LDFLAGS=-L$(HOME)/boost/lib -L$(HOME)/lib -lhts -lboost_program_options
 
 all: $(EXE_NAME)

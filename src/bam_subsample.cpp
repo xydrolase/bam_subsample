@@ -36,6 +36,21 @@ static inline char bam_4bit2char(uint8_t b4)
 	return sam_nucleotides[nidx];
 }
 
+// convert 4-bit repr. of a nucleotide to the "true" literal nucleotide ACTG.
+static inline char bam_4bit2comp(uint8_t b4) 
+{
+	// use GCC/GNU builtin to scan the number of trailing zeros.
+	// i.e. 1 -> 0, 2 -> 1, 4 -> 2, 8 -> 3
+	// then, evaluate the complementary base.
+	// Original:      ACGT 0, 1, 2, 3
+	// Complementary: TGCA 0, 1, 2, 3
+	int idx = 3 - __builtin_ctz(b4); 
+	uint8_t mask = (b4 == 0xf) - 1; // 0xff if ACTG, 0 if N
+	// is it the "N" base?
+	int nidx = (idx & mask) + (4 & ~mask);
+	return sam_nucleotides[nidx];
+}
+
 void format_error(std::stringstream &ss, uint32_t is_rev, std::string rid, 
 		int qlen, int epos, char ref, char err)
 {
@@ -156,6 +171,10 @@ void bam_filter(options &opt)
 		// check if unmapped, if so, discard immediately.
 		// also discards alignment that is not primary.
 		if (flag & BAM_FUNMAP || flag & BAM_FSECONDARY) {
+#ifdef DEBUG
+			std::cout << bam_get_qname(aln) << std::endl;
+			getchar();
+#endif
 			continue;
 		}
 
@@ -215,13 +234,29 @@ void bam_filter(options &opt)
 		rseq_qual[qlen] = '\0';
 
 		uint8_t contains_n = 0;
-		for (int i = 0; i < qlen; ++i) {
-			uint8_t b = bam_seqi(rd_seq, i);
-			rseq_literal[i] = bam_4bit2char(b);
-			contains_n |= (b == 0xf);
+		if (flag & BAM_FREVERSE) {
+			// for reads that map to the reverse complemnt of the reference,
+			// we need to flip the sequence order accordingly (and of course
+			// evaluate the complementary sequence).
+			for (int i = 0; i < qlen; ++i) {
+				int ri = qlen - i - 1; // 0-based index
+				uint8_t b = bam_seqi(rd_seq, i);
+				rseq_literal[ri] = bam_4bit2comp(b);
+				contains_n |= (b == 0xf);
 
-			// convert quality score to ASCII representation. 
-			rseq_qual[i] = rd_qual[i] + 33;
+				// convert quality score to ASCII representation. 
+				rseq_qual[ri] = rd_qual[i] + 33;
+			}
+		}
+		else {
+			for (int i = 0; i < qlen; ++i) {
+				uint8_t b = bam_seqi(rd_seq, i);
+				rseq_literal[i] = bam_4bit2char(b);
+				contains_n |= (b == 0xf);
+
+				// convert quality score to ASCII representation. 
+				rseq_qual[i] = rd_qual[i] + 33;
+			}
 		}
 
 		// check if the sequence contain ambiguous bases
